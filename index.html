@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bintang Jatuh — tangkap bintangnya, hindari batunya!</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #050514; height: 100%; overflow: hidden; }
+  #game { display: block; margin: 0 auto; background: #0a0a2e; touch-action: none; }
+  #hint { position: fixed; bottom: 8px; width: 100%; text-align: center;
+          color: #8f8fc9; font: 13px system-ui, sans-serif; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="640"></canvas>
+<div id="hint">← → / mouse untuk gerak &nbsp;•&nbsp; tangkap bintang +10 &nbsp;•&nbsp; hindari batu &nbsp;•&nbsp; R untuk main lagi</div>
+<script>
+"use strict";
+// Bintang Jatuh — tiny arcade game, all original code, no external assets.
+const cv = document.getElementById("game");
+const ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+
+let score = 0, lives = 3, over = false, started = false;
+let basket = { x: W / 2, w: 84, h: 16, y: H - 40 };
+let items = [];           // falling {x, y, vy, kind: 'star'|'rock', r, rot}
+let twinkles = [];        // background stars {x, y, r, p}
+let spawnT = 0, elapsed = 0, last = performance.now();
+let audio = null;
+
+for (let i = 0; i < 70; i++)
+  twinkles.push({ x: Math.random() * W, y: Math.random() * H,
+                  r: Math.random() * 1.4 + 0.4, p: Math.random() * 6.28 });
+
+function beep(freq) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.08, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.15);
+    o.connect(g); g.connect(audio.destination);
+    o.start(); o.stop(audio.currentTime + 0.16);
+  } catch (e) { /* audio is optional */ }
+}
+
+function spawn() {
+  const kind = Math.random() < 0.72 ? "star" : "rock";
+  const speed = 130 + Math.min(220, score * 1.6) + Math.random() * 60;
+  items.push({ x: 20 + Math.random() * (W - 40), y: -20, vy: speed,
+               kind, r: kind === "star" ? 13 : 15, rot: Math.random() * 6.28 });
+}
+
+function drawStar(x, y, r, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = "#ffd94d"; ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = i * Math.PI / 5 - Math.PI / 2, rr = i % 2 ? r * 0.45 : r;
+    ctx[i ? "lineTo" : "moveTo"](Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function drawRock(x, y, r, rot) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.fillStyle = "#8d8d9e"; ctx.beginPath();
+  ctx.moveTo(-r, -r * 0.4); ctx.lineTo(-r * 0.3, -r); ctx.lineTo(r, -r * 0.5);
+  ctx.lineTo(r * 0.8, r * 0.6); ctx.lineTo(0, r); ctx.lineTo(-r * 0.8, r * 0.5);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  // night sky + twinkling background stars
+  for (const t of twinkles) {
+    ctx.globalAlpha = 0.35 + 0.35 * Math.sin(elapsed / 500 + t.p);
+    ctx.fillStyle = "#cdd6ff";
+    ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, 6.29); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  // moon
+  ctx.fillStyle = "#f4f1de"; ctx.beginPath(); ctx.arc(W - 56, 52, 26, 0, 6.29); ctx.fill();
+  ctx.fillStyle = "#0a0a2e"; ctx.beginPath(); ctx.arc(W - 46, 46, 22, 0, 6.29); ctx.fill();
+  // falling items
+  for (const it of items) {
+    if (it.kind === "star") drawStar(it.x, it.y, it.r, it.rot);
+    else drawRock(it.x, it.y, it.r, it.rot);
+  }
+  // basket
+  ctx.fillStyle = "#ff9f43";
+  ctx.fillRect(basket.x - basket.w / 2, basket.y, basket.w, basket.h);
+  ctx.fillStyle = "#e67e22";
+  ctx.fillRect(basket.x - basket.w / 2, basket.y, basket.w, 5);
+  // HUD
+  ctx.fillStyle = "#fff"; ctx.font = "bold 20px system-ui, sans-serif";
+  ctx.textAlign = "left"; ctx.fillText("Skor: " + score, 14, 30);
+  ctx.textAlign = "right";
+  ctx.fillText("❤".repeat(Math.max(0, lives)) + "☆".repeat(Math.max(0, 3 - lives)), W - 14, 30);
+  ctx.textAlign = "center";
+  if (!started) {
+    ctx.fillStyle = "rgba(5,5,20,0.72)"; ctx.fillRect(0, H / 2 - 70, W, 130);
+    ctx.fillStyle = "#ffd94d"; ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.fillText("BINTANG JATUH", W / 2, H / 2 - 22);
+    ctx.fillStyle = "#fff"; ctx.font = "18px system-ui, sans-serif";
+    ctx.fillText("Tangkap bintang, hindari batu!", W / 2, H / 2 + 12);
+    ctx.fillText("Tekan tombol apa saja / klik untuk mulai", W / 2, H / 2 + 42);
+  } else if (over) {
+    ctx.fillStyle = "rgba(5,5,20,0.78)"; ctx.fillRect(0, H / 2 - 70, W, 130);
+    ctx.fillStyle = "#ff6b6b"; ctx.font = "bold 32px system-ui, sans-serif";
+    ctx.fillText("GAME OVER", W / 2, H / 2 - 22);
+    ctx.fillStyle = "#fff"; ctx.font = "20px system-ui, sans-serif";
+    ctx.fillText("Skor akhir: " + score, W / 2, H / 2 + 12);
+    ctx.fillText("Tekan R untuk main lagi", W / 2, H / 2 + 42);
+  }
+}
+
+function step(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now; elapsed += dt * 1000;
+  if (started && !over) {
+    spawnT -= dt;
+    if (spawnT <= 0) { spawn(); spawnT = Math.max(0.35, 0.85 - score * 0.004); }
+    for (const it of items) { it.y += it.vy * dt; it.rot += dt * 1.5; }
+    // catch / miss
+    items = items.filter(it => {
+      const inBasket = it.y + it.r >= basket.y && it.y - it.r <= basket.y + basket.h &&
+                       Math.abs(it.x - basket.x) <= basket.w / 2 + it.r * 0.5;
+      if (inBasket) {
+        if (it.kind === "star") { score += 10; beep(880); }
+        else { lives -= 1; beep(160); if (lives <= 0) over = true; }
+        return false;
+      }
+      return it.y < H + 30;
+    });
+  }
+  draw();
+  requestAnimationFrame(step);
+}
+
+function moveTo(clientX) {
+  const r = cv.getBoundingClientRect();
+  basket.x = Math.max(basket.w / 2, Math.min(W - basket.w / 2,
+    (clientX - r.left) * (W / r.width)));
+}
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft") basket.x = Math.max(basket.w / 2, basket.x - 26);
+  if (e.key === "ArrowRight") basket.x = Math.min(W - basket.w / 2, basket.x + 26);
+  if (e.key === "r" || e.key === "R") {
+    if (over) { score = 0; lives = 3; items = []; over = false; started = true; }
+  }
+  if (!started) started = true;
+});
+cv.addEventListener("pointermove", e => { moveTo(e.clientX); if (!started) started = true; });
+cv.addEventListener("pointerdown", e => { moveTo(e.clientX); if (!started) started = true; });
+// Debug/test handle (read-only): lets an automated driver play the real game.
+window.BINTANG = { get score() { return score; }, get lives() { return lives; },
+  get over() { return over; }, items: () => items.map(i => ({ x: i.x, y: i.y, kind: i.kind })) };
+requestAnimationFrame(step);
+</script>
+</body>
+</html>
