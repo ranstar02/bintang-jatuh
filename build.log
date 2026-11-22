@@ -1,0 +1,15 @@
+=== BUILD LOG — Bintang Jatuh (built from prompt.md, one prompt) ===
+2026-11-22T13:07:55Z
+--- files ---
+total 8
+drwxrws--- 1 root nogroup   20 Nov 22 13:07 .
+drwxrws--- 1 root nogroup  104 Nov 22 13:07 ..
+-rw-rw---- 1 root nogroup 6579 Nov 22 13:07 index.html
+--- prompt sha ---
+a77f93727fc9ae6df458b1e73ef4740abe4acdf409d790619c896e142d378ecc  prompt.md
+9f240dabff0b729233fd6fe557b31ac95287e316a749561850b5c19f56da3110  repo/index.html
+127.0.0.1 - - [22/Nov/2026 13:08:03] "GET /index.html HTTP/1.1" 200 -
+smoke: canvas ok | title: Bintang Jatuh — tangkap bintangnya, hindari batunya!
+exit=0
+-rw-rw---- 1 root nogroup 16864 Nov 22 13:08 smoke-play.png
+-rw-rw---- 1 root nogroup 24305 Nov 22 13:08 smoke-title.png
